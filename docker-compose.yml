@@ -1,0 +1,29 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    cap_add:
+      - NET_ADMIN
+
+  servico_web_1:
+    build: 
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=8080
+    depends_on:
+      - mosquitto
+
+  servico_db_1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=5432
+    depends_on:
+      - mosquitto
