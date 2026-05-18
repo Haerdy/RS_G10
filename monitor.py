@@ -36,6 +36,8 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("docker/nodes/+/status")
 
 def on_message(client, userdata, msg):
+    print("MENSAGEM RECEBIDA")
+    print(msg.payload.decode())    
     try:
         payload = json.loads(msg.payload.decode())
         container_id = payload.get("id")
@@ -48,7 +50,7 @@ def on_message(client, userdata, msg):
             ip = payload.get("ip")
             port = payload.get("port")
             # Calcula o RTT em tempo real ao receber a telemetria
-            rtt = calculate_rtt(ip)
+            rtt ="0 ms"
             
             network_health_map[container_id] = {
                 "ip": ip,
@@ -75,14 +77,19 @@ def monitor_timeout_checker():
                 info["rtt"] = "TIMEOUT"
         time.sleep(2)
 
+if __name__ == "__main__":
 # Configuração do Cliente MQTT do monitor
-client = mqtt.Client(client_id="main-docker-monitor")
-client.on_connect = on_connect
-client.on_message = on_message
+    client = mqtt.Client(client_id="main-docker-monitor")
+    client.on_connect = on_connect
+    client.on_message = on_message
 
-client.connect("localhost", 1883, keepalive=60)
-client.loop_start()
+    client.connect("localhost", 1883, keepalive=60)
+    client.loop_start()
 
-# Inicia a verificação ativa de timeout numa thread separada
-checker_thread = threading.Thread(target=monitor_timeout_checker, daemon=True)
-checker_thread.start()
+    # Inicia a verificação ativa de timeout numa thread separada
+    checker_thread = threading.Thread(target=monitor_timeout_checker, daemon=True)
+    checker_thread.start()
+
+    # Mantém o monitor ativo
+    while True:
+        time.sleep(1)

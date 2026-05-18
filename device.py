@@ -1,31 +1,48 @@
+import paho.mqtt.client as mqtt
+import json
 import time
 import os
-from monitor import network_health_map  # Importa o mapa de saúde atualizado pelo monitor
+import socket
 
-def display_dashboard():
+BROKER = os.getenv("MQTT_BROKER", "mosquitto")
+PORT = int(os.getenv("SERVICE_PORT", 8080))
+
+container_id = socket.gethostname()
+ip ="127.0.0.1"
+
+topic = f"docker/nodes/{container_id}/status"
+
+client = mqtt.Client(client_id=container_id)
+
+# Last Will
+will_payload = json.dumps({
+    "id": container_id,
+    "status": "DOWN"
+})
+
+client.will_set(topic, will_payload, qos=1, retain=True)
+
+client.connect(BROKER, 1883, keepalive=60)
+
+client.loop_start()
+
+print(f"[{container_id}] conectado ao broker MQTT")
+try:
     while True:
-        # Limpa o terminal para efeito "Real-Time"
-        os.system('cls' if os.name == 'nt' else 'clear')
-        
-        print("=" * 80)
-        print("          MAPA DE SAÚDE DA REDE DE CONTENTORES DOCKER (MQTT)           ")
-        print("=" * 80)
-        print(f"{'CONTAINER ID':<15} | {'IP COORD':<15} | {'PORTA':<6} | {'ESTADO':<8} | {'RTT LATÊNCIA':<15}")
-        print("-" * 80)
-        
-        if not network_health_map:
-            print("Nenhum contentor Docker registado no ecossistema até ao momento.")
-        else:
-            for c_id, info in list(network_health_map.items()):
-                status_color = "\033[92mUP\033[0m" if info['status'] == "UP" else "\033[91mDOWN\033[0m"
-                print(f"{c_id:<15} | {info['ip']:<15} | {info['port']:<6} | {status_color:<17} | {info['rtt']:<15}")
-                
-        print("=" * 80)
-        print("Pressione Ctrl+C para sair do Dashboard.")
-        time.sleep(2)
 
-if __name__ == "__main__":
-    try:
-        display_dashboard()
-    except KeyboardInterrupt:
-        print("\nDashboard encerrado.")
+        payload = json.dumps({
+            "id": container_id,
+            "ip": ip,
+            "port": PORT,
+            "status": "UP"
+        })
+
+        print(f"[{container_id}] enviando heartbeat")
+        print(payload)
+
+        client.publish(topic, payload, qos=1, retain=True)
+
+        time.sleep(5)
+except Exception as e:
+    print("ERRO:")
+    print(e)
