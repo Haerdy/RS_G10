@@ -3,12 +3,12 @@ import json
 import time
 import os
 import socket
-
+import random
 BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 PORT = int(os.getenv("SERVICE_PORT", 8080))
 
 container_id = socket.gethostname()
-ip ="127.0.0.1"
+ip = socket.gethostbyname(socket.gethostname())
 
 topic = f"docker/nodes/{container_id}/status"
 
@@ -34,15 +34,20 @@ try:
             "id": container_id,
             "ip": ip,
             "port": PORT,
-            "status": "UP"
+            "status": "UP",
+            "timestamp": time.time()
         })
 
         print(f"[{container_id}] enviando heartbeat")
         print(payload)
 
-        client.publish(topic, payload, qos=1, retain=True)
+        delay = random.randint(1, 8)
 
-        time.sleep(5)
+        print(f"[{container_id}] latência simulada: {delay}s")
+
+        time.sleep(delay)
+
+        client.publish(topic, payload, qos=1, retain=True)
 except Exception as e:
     print("ERRO:")
     print(e)

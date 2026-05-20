@@ -79,15 +79,24 @@ def display_dashboard():
                 # Cor do estado
                 if info["status"] == "UP":
                     status_colored = "\033[92mUP\033[0m"
+
+                elif info["status"] == "DELAYED":
+                    status_colored = "\033[93mDELAYED\033[0m"
+
                 else:
                     status_colored = "\033[91mDOWN\033[0m"
+                ip = info.get("ip") or "N/A"
+                port = info.get("port") or "N/A"
+                rtt = info.get("rtt") or "N/A"
+                timestamp = info.get("timestamp") or "N/A"
+
                 print(
                     f"{cid[:15]:<15} | "
-                    f"{info['ip']:<15} | "
-                    f"{str(info['port']):<8} | "
+                    f"{ip:<15} | "
+                    f"{str(port):<8} | "
                     f"{status_colored:<18} | "
-                    f"{info['rtt']:<12} | "
-                    f"{info['timestamp']:<20} | "
+                    f"{rtt:<12} | "
+                    f"{timestamp:<20} | "
                     f"{str(elapsed) + ' s':<18}"
                 )
 
