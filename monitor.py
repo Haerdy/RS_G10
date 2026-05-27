@@ -10,16 +10,6 @@ TIMEOUT_LIMIT = 12
 
 
 # CONEXÃO MQTT
-# o rc é o código de retorno da conexão, onde 0 indica sucesso.
-#  Se a conexão for bem-sucedida, o monitor subscreve ao tópico
-#  "docker/nodes/+/status" para receber atualizações de status
-#  de todos os contentores. Caso contrário, imprime um erro com
-#  o código de falha.
-# a funcao on_connect serve para estabelecer a conexão com o broker
-#  MQTT e subscrever ao tópico onde os contentores publicam seus
-#  status. O uso do curinga "+" permite que o monitor receba 
-# mensagens de todos os contentores, independentemente do seu ID
-#  específico.
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("[MONITOR] Conectado ao broker MQTT.")
@@ -38,13 +28,9 @@ def on_message(client, userdata, msg):
         container_id = payload.get("id")
         status = payload.get("status")
 
-# Se o ID do contentor não estiver presente, a função retorna
-#  sem fazer nada.
-
         if not container_id:
             return
         sent_time = payload.get("timestamp")
-        # Calcula a latência (RTT) com base no timestamp enviado pelo contentor e o tempo atual.
         latency = round((time.time() - sent_time) * 1000, 2)
         # Atualiza ou cria entrada no mapa
         network_health_map[container_id] = {
