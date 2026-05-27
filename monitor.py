@@ -22,6 +22,7 @@ def on_connect(client, userdata, flags, rc):
 # Recebe mensagens de status dos contentores e atualiza o mapa de saúde da rede
 def on_message(client, userdata, msg):
     try:
+        # Decodifica o payload JSON recebido e extrai o ID do contentor e seu status.
         payload = json.loads(msg.payload.decode())
 
         container_id = payload.get("id")
