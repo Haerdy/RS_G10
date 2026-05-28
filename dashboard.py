@@ -2,11 +2,15 @@ import paho.mqtt.client as mqtt
 import json
 import time
 import os
+import threading
 from datetime import datetime
 
 network_health_map = {}
 # Tempo máximo sem heartbeat
 TIMEOUT_LIMIT = 12
+
+#proteção contra accessos concorrentes
+lock = threading.Lock()
 
 # conexão MQTT
 def on_connect(client, userdata, flags, rc):
@@ -21,33 +25,43 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
-        container_id = payload.get("id")
-        if not container_id:
+        cid = payload.get("id")
+        if not cid:
             return
+        
         current_time = time.time()
-        network_health_map[container_id] = {
-            "ip": payload.get("ip"),
-            "port": payload.get("port"),
-            "status": payload.get("status", "UP"),
-            "rtt": payload.get("rtt", "0 ms"),
-            "last_seen": current_time,
-            "timestamp": datetime.now().strftime("%H:%M:%S")
-        }
 
+        sent_time = payload.get("timestamp", current_time)
+        latency = round((current_time - sent_time) * 1000, 2)
+        rtt_str = f"{latency} ms" if payload.get("status") == "UP" else "N/A"
+
+        with lock:
+
+            network_health_map[cid] = {
+                "ip": payload.get("ip", "N/A"),
+                "port": payload.get("port", "N/A"),
+                "status": payload.get("status", "UP"),
+                "rtt": rtt_str,
+                "last_seen": current_time,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            }
     except Exception as e:
-
         print(f"[ERRO] {e}")
 
 # deteção de timeout para marcar contentores como DOWN se não receberem heartbeat dentro do limite
 def update_timeout_status():
     current_time = time.time()
-    for container_id, info in list(network_health_map.items()):
-        elapsed = current_time - info["last_seen"]
-        # Se passou do limite -> DOWN
-        if elapsed > TIMEOUT_LIMIT:
-            if info["status"] != "DOWN":
-                info["status"] = "DOWN"
-                print(f"[TIMEOUT] {container_id[:12]} ficou OFFLINE.")
+    with lock:
+        for cid, info in list(network_health_map.items()):
+            elapsed = current_time - info["last_seen"]
+            # Se passou do limite -> DOWN
+            if elapsed > TIMEOUT_LIMIT:
+                if info["status"] != "DOWN":
+                    info["status"] = "DOWN"
+                    info["rtt"] = "N/A"
+                    print(f"[TIMEOUT] {cid[:12]} ficou OFFLINE.")
+            elif elapsed > 5 and info["status"] == "UP":
+                info["status"] = "DELAYED"
 
 # exibir o dashboard no terminal
 
@@ -68,37 +82,37 @@ def display_dashboard():
             f"{'ÚLTIMO HEARTBEAT':<20} | "
             f"{'TEMPO SEM SINAL':<18}"
         )
-
         print("-" * 120)
-        if not network_health_map:
-            print("Nenhum contentor Docker registado.")
-        else:
-            current_time = time.time()
-            for cid, info in network_health_map.items():
-                elapsed = int(current_time - info["last_seen"])
-                # Cor do estado
-                if info["status"] == "UP":
-                    status_colored = "\033[92mUP\033[0m"
 
-                elif info["status"] == "DELAYED":
-                    status_colored = "\033[93mDELAYED\033[0m"
+        with lock:
+            if not network_health_map:
+                print("Nenhum contentor Docker registado.")
+            else:
+                for cid, info in network_health_map.items():
+                    elapsed = int(time.time() - info["last_seen"])
 
-                else:
-                    status_colored = "\033[91mDOWN\033[0m"
-                ip = info.get("ip") or "N/A"
-                port = info.get("port") or "N/A"
-                rtt = info.get("rtt") or "N/A"
-                timestamp = info.get("timestamp") or "N/A"
+                    # Cor do estado
+                    if info["status"] == "UP":
+                        status_colored = "\033[92mUP\033[0m"
+                    elif info["status"] == "DELAYED":
+                        status_colored = "\033[93mDELAYED\033[0m"
+                    else:
+                        status_colored = "\033[91mDOWN\033[0m"
+                    
+                    ip = info.get("ip") or "N/A"
+                    port = info.get("port") or "N/A"
+                    rtt = info.get("rtt") or "N/A"
+                    timestamp = info.get("timestamp") or "N/A"
 
-                print(
-                    f"{cid[:15]:<15} | "
-                    f"{ip:<15} | "
-                    f"{str(port):<8} | "
-                    f"{status_colored:<18} | "
-                    f"{rtt:<12} | "
-                    f"{timestamp:<20} | "
-                    f"{str(elapsed) + ' s':<18}"
-                )
+                    print(
+                        f"{cid[:15]:<15} | "
+                        f"{ip:<15} | "
+                        f"{str(port):<8} | "
+                        f"{status_colored:<18} | "
+                        f"{rtt:<12} | "
+                        f"{timestamp:<20} | "
+                        f"{str(elapsed) + ' s':<18}"
+                    )
 
         print("=" * 120)
         print("Atualização automática a cada 2 segundos.")
@@ -123,4 +137,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n[DASHBOARD] Encerrando dashboard...")
     except Exception as e:
-        print(f"[ERRO CRÍTICO] {e}")
+        print(f"[ERRO CRÍTICO INESPERADO] {e}")
