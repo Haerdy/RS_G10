@@ -1,3 +1,11 @@
+"""
+SCRIPT: dashboard.py
+RESUMO: Central de Monitorização Ativa (Serviço de Dashboard). Subscreve os 
+        tópicos de telemetria de todos os nós, calcula métricas de latência (RTT) 
+        em tempo real e gere de forma concorrente os estados de vivacidade (UP, 
+        DELAYED, DOWN) dos contentores através de um mecanismo de timeout.
+"""
+
 import paho.mqtt.client as mqtt
 import json
 import time
@@ -5,23 +13,33 @@ import os
 import threading
 from datetime import datetime
 
+# Estrutura de dados global que armazena a tabela de saúde da infraestrutura
 network_health_map = {}
+
 # Tempo máximo sem heartbeat
 TIMEOUT_LIMIT = 12
 
-#proteção contra accessos concorrentes
+# [IMPORTANTE] Thread Lock (Mutex)
+# Evita condições de corrida (Race Conditions) ao manipular o 'network_health_map',
 lock = threading.Lock()
 
 # conexão MQTT
+"""
+    RESUMO: Callback disparado quando o dashboard se liga ao broker MQTT.
+        Responsável por efetuar a subscrição dinâmica através de wildcards (+).
+"""
 def on_connect(client, userdata, flags, rc):
-
     if rc == 0:
         print("[DASHBOARD] Conectado ao broker MQTT.")
+        # [IMPORTANTE] Subscrição com Single-Level Wildcard (+) para capturar eventos de qualquer ID
         client.subscribe("docker/nodes/+/status")
     else:
         print(f"[ERRO] Falha ao conectar MQTT. Código: {rc}")
 
-# recebe mensagens de status dos contentores e atualiza o mapa de saúde da rede
+"""
+RESUMO: Callback executado sempre que uma mensagem de telemetria chega ao broker.
+        Efetua o parsing dos dados do agente e calcula o RTT da mensagem.
+"""
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
@@ -31,12 +49,14 @@ def on_message(client, userdata, msg):
         
         current_time = time.time()
 
+        # [IMPORTANTE] Cálculo de Latência Unidirecional / RTT aproximado
+        # Subtrai o timestamp de envio do agente ao tempo de receção do dashboard
         sent_time = payload.get("timestamp", current_time)
         latency = round((current_time - sent_time) * 1000, 2)
         rtt_str = f"{latency} ms" if payload.get("status") == "UP" else "N/A"
 
+        # [IMPORTANTE] Escrita segura usando exclusão mútua
         with lock:
-
             network_health_map[cid] = {
                 "ip": payload.get("ip", "N/A"),
                 "port": payload.get("port", "N/A"),
@@ -48,13 +68,21 @@ def on_message(client, userdata, msg):
     except Exception as e:
         print(f"[ERRO] {e}")
 
-# deteção de timeout para marcar contentores como DOWN se não receberem heartbeat dentro do limite
+"""
+RESUMO: Avalia o diferencial de tempo decorrido desde o último heartbeat recebido, 
+        atualizando o estado do mapa para DELAYED ou DOWN se exceder os limites.
+"""
 def update_timeout_status():
+    
     current_time = time.time()
+
+    # [IMPORTANTE] Lock para leitura e modificação segura do dicionário
     with lock:
+        # Conversão para list() essencial para evitar erros de mutação de dicionário durante a iteração
         for cid, info in list(network_health_map.items()):
             elapsed = current_time - info["last_seen"]
-            # Se passou do limite -> DOWN
+
+            # [IMPORTANTE] Máquina de Estados de Disponibilidade
             if elapsed > TIMEOUT_LIMIT:
                 if info["status"] != "DOWN":
                     info["status"] = "DOWN"
@@ -63,13 +91,17 @@ def update_timeout_status():
             elif elapsed > 5 and info["status"] == "UP":
                 info["status"] = "DELAYED"
 
-# exibir o dashboard no terminal
-
+"""
+RESUMO: Loop de renderização visual da Interface de Linha de Comando (CLI). 
+        Limpa o terminal periodicamente e imprime a matriz de saúde formatada.
+"""
 def display_dashboard():
-
     while True:
+        # Executa a verificação lógica de vitalidade antes de desenhar
         update_timeout_status()
+        # Limpar o terminal
         os.system('cls' if os.name == 'nt' else 'clear')
+
         print("=" * 120)
         print("          MAPA DE SAÚDE DA REDE DE CONTENTORES DOCKER (MQTT)")
         print("=" * 120)
@@ -84,6 +116,7 @@ def display_dashboard():
         )
         print("-" * 120)
 
+        # [IMPORTANTE] Bloqueio de concorrência para leitura e renderização consistente dos dados
         with lock:
             if not network_health_map:
                 print("Nenhum contentor Docker registado.")
@@ -91,7 +124,7 @@ def display_dashboard():
                 for cid, info in network_health_map.items():
                     elapsed = int(time.time() - info["last_seen"])
 
-                    # Cor do estado
+                    # Cor para gerar um indicador visual do estado dos contentores
                     if info["status"] == "UP":
                         status_colored = "\033[92mUP\033[0m"
                     elif info["status"] == "DELAYED":
@@ -132,7 +165,9 @@ if __name__ == "__main__":
 
     try:
         client.connect("localhost", 1883, 60)
+        # Inicializa o loop de processamento de rede do MQTT numa thread secundária nativa
         client.loop_start()
+        # Inicia a renderização do Dashboard (bloqueia o fluxo principal)
         display_dashboard()
     except KeyboardInterrupt:
         print("\n[DASHBOARD] Encerrando dashboard...")
