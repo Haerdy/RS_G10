@@ -16,6 +16,16 @@ services:
     depends_on:
       - mosquitto
 
+  servico_web_2:
+    build: 
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=8081
+    depends_on:
+      - mosquitto
+
   servico_db_1:
     build:
       context: .
@@ -23,5 +33,45 @@ services:
     environment:
       - MQTT_BROKER=mosquitto
       - SERVICE_PORT=5432
+    depends_on:
+      - mosquitto
+
+  servico_db_2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=5433
+    depends_on:
+      - mosquitto
+  
+  servico_cache_1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=6379
+    depends_on:
+      - mosquitto
+
+  servico_auth_1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=9000
+    depends_on:
+      - mosquitto
+
+  servico_queue_1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      - MQTT_BROKER=mosquitto
+      - SERVICE_PORT=5672
     depends_on:
       - mosquitto
